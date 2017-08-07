@@ -12,6 +12,7 @@
 #include <vector>
 #include <ctime>
 
+namespace fs = boost::filesystem;
 using namespace caffe;  // NOLINT(build/namespaces)
 using std::string;
 
@@ -226,52 +227,19 @@ void Classifier::Preprocess(const cv::Mat& img,
     << "Input channels are not wrapping the input layer of the network.";
 }
 
-// This is the main that came with the classifier
-int old_main(int argc, char** argv) {
-  if (argc != 6) {
-    std::cerr << "Usage: " << argv[0]
-              << " deploy.prototxt network.caffemodel"
-              << " mean.binaryproto labels.txt img.jpg" << std::endl;
-    return 1;
-  }
-
-  ::google::InitGoogleLogging(argv[0]);
-
-  string model_file   = argv[1];
-  string trained_file = argv[2];
-  string mean_file    = argv[3];
-  string label_file   = argv[4];
-  Classifier classifier(model_file, trained_file, mean_file, label_file);
-
-  string file = argv[5];
-
-  std::cout << "---------- Prediction for "
-            << file << " ----------" << std::endl;
-
-  cv::Mat img = cv::imread(file, -1);
-  CHECK(!img.empty()) << "Unable to decode image " << file;
-  std::vector<Prediction> predictions = classifier.Classify(img);
-
-  /* Print the top N predictions. */
-  for (size_t i = 0; i < predictions.size(); ++i) {
-    Prediction p = predictions[i];
-    std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
-              << p.first << "\"" << std::endl;
-  }
-}
-
 // Returns a list of image files that exist in the input directory 
 std::vector<string> getImageFiles(const string& directory) {
-
+  fs::directory_iterator b(directory), e;
+  std::vector<fs::path> paths(b, e);
+  std::vector<string> str_paths;
+  for (fs::path p : paths) {
+    str_paths.push_back(p.string());
+  }
+  return str_paths;
 }
 
 int main(int arc, char** argv) {
-    std::vector<string> fnames = getFiles("test_images");   
-    return 0;
-}
-
-int main_2(int argc, char** argv) {
-  if (argc != 6) {
+  if (arc != 6) {
     std::cerr << "Usage: " << argv[0]
               << " deploy.prototxt network.caffemodel"
               << " mean.binaryproto labels.txt input_dir" << std::endl;
@@ -287,29 +255,28 @@ int main_2(int argc, char** argv) {
   string label_file   = argv[4];
   Classifier classifier(model_file, trained_file, mean_file, label_file);
 
-  int start_s = clock();
+  // Classify some images
+  string img_dir = "test_images";
+  std::vector<string> fnames = getImageFiles(img_dir);   
 
-  // TODO: Get filenames from input dir
-  // TODO: For each file in input dir
-    // TODO: Read into image
-    // TODO: Run classifier
-    // TODO: Print output
+  int start_s=clock();
+  for (string fname : fnames) {
+    std::cout << "---------- Prediction for "
+              << fname << " ----------" << std::endl;
+
+    cv::Mat img = cv::imread(fname, -1);
+    CHECK(!img.empty()) << "Unable to decode image " << fname;
+    std::vector<Prediction> predictions = classifier.Classify(img);
+
+    /* Print the top N predictions. */
+    for (size_t i = 0; i < predictions.size(); ++i) {
+      Prediction p = predictions[i];
+      std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
+                << p.first << "\"" << std::endl;
+    }
+  }
   int stop_s=clock();
   std::cout << "time: " << (stop_s-start_s)/double(CLOCKS_PER_SEC)*1000 << std::endl;
 
-  string file = argv[5];
-
-  std::cout << "---------- Prediction for "
-            << file << " ----------" << std::endl;
-
-  cv::Mat img = cv::imread(file, -1);
-  CHECK(!img.empty()) << "Unable to decode image " << file;
-  std::vector<Prediction> predictions = classifier.Classify(img);
-
-  /* Print the top N predictions. */
-  for (size_t i = 0; i < predictions.size(); ++i) {
-    Prediction p = predictions[i];
-    std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
-              << p.first << "\"" << std::endl;
-  }
+  return 0;
 }
