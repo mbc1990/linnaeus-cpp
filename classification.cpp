@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 #include <ctime>
+#include <pthread.h>
 
 namespace fs = boost::filesystem;
 using namespace caffe;  // NOLINT(build/namespaces)
@@ -238,6 +239,33 @@ std::vector<string> getImageFiles(const string& directory) {
   return str_paths;
 }
 
+struct ClassifyImgArgs {
+  Classifier* classifier;
+  string fname;
+};
+
+// Classify an image file
+void *classifyImgFile(void *arguments) {
+  struct ClassifyImgArgs *args = (struct ClassifyImgArgs *)arguments;
+  Classifier classifier = *args->classifier;
+  string fname = args->fname;
+
+  std::cout << "---------- Prediction for "
+            << fname << " ----------" << std::endl;
+
+  cv::Mat img = cv::imread(fname, -1);
+  CHECK(!img.empty()) << "Unable to decode image " << fname;
+  std::vector<Prediction> predictions = classifier.Classify(img);
+
+  /* Print the top N predictions. */
+  for (size_t i = 0; i < predictions.size(); ++i) {
+    Prediction p = predictions[i];
+    std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
+              << p.first << "\"" << std::endl;
+  }
+  return NULL;
+}
+
 int main(int arc, char** argv) {
   if (arc != 6) {
     std::cerr << "Usage: " << argv[0]
@@ -259,23 +287,21 @@ int main(int arc, char** argv) {
   string img_dir = "test_images";
   std::vector<string> fnames = getImageFiles(img_dir);   
 
-  int start_s=clock();
+  int start_s = clock();
+  std::vector<pthread_t> classifierThreads;
   for (string fname : fnames) {
-    std::cout << "---------- Prediction for "
-              << fname << " ----------" << std::endl;
+    struct ClassifyImgArgs args;
+    args.classifier = &classifier;
+    args.fname = fname;
 
-    cv::Mat img = cv::imread(fname, -1);
-    CHECK(!img.empty()) << "Unable to decode image " << fname;
-    std::vector<Prediction> predictions = classifier.Classify(img);
-
-    /* Print the top N predictions. */
-    for (size_t i = 0; i < predictions.size(); ++i) {
-      Prediction p = predictions[i];
-      std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
-                << p.first << "\"" << std::endl;
-    }
+    pthread_t thr;
+    pthread_create(&thr, NULL, &classifyImgFile, (void *)&args);
+    classifierThreads.push_back(thr);
   }
-  int stop_s=clock();
+  for (pthread_t thr : classifierThreads) {
+    pthread_join(thr, NULL);
+  }
+  int stop_s = clock();
   std::cout << "time: " << (stop_s-start_s)/double(CLOCKS_PER_SEC)*1000 << std::endl;
 
   return 0;
