@@ -240,29 +240,59 @@ std::vector<string> getImageFiles(const string& directory) {
 }
 
 struct ClassifyImgArgs {
-  Classifier* classifier;
-  string fname;
+  std::string fname;
+  std::string model_file;
+  std::string trained_file;
+  std::string mean_file;
+  std::string label_file;
 };
 
 // Classify an image file
-void *classifyImgFile(void *arguments) {
-  struct ClassifyImgArgs *args = (struct ClassifyImgArgs *)arguments;
-  Classifier classifier = *args->classifier;
-  string fname = args->fname;
+void* classifyImgFile(void* arguments) {
+  std::cout << "In CIF"
+            << std::endl;
+
+  ClassifyImgArgs *args = (ClassifyImgArgs*)arguments;
+  std::cout << "have args"
+            << std::endl;
+
+  Classifier c(args->model_file, args->trained_file,
+               args->mean_file, args->label_file);
+  
+  Classifier* classifier = &c;
+
+  std::cout << "have classifier"
+            << std::endl;
+
+  std::cout << "fname from args: " 
+            << args->fname
+            << std::endl;
+  
+  std::string fname = args->fname;
+  std::cout << "Have string"
+            << std::endl;
+
+  // TODO:
+  // fname is truncated from the left here which makes the rest of
+  // this code not work.
+  // This seems to have something to do with the void * casting
+  std::cout << "fname in classifyImgFile: " 
+            << fname
+            << std::endl;
 
   std::cout << "---------- Prediction for "
             << fname << " ----------" << std::endl;
 
   cv::Mat img = cv::imread(fname, -1);
   CHECK(!img.empty()) << "Unable to decode image " << fname;
-  std::vector<Prediction> predictions = classifier.Classify(img);
+  std::vector<Prediction> predictions = classifier->Classify(img);
 
-  /* Print the top N predictions. */
   for (size_t i = 0; i < predictions.size(); ++i) {
     Prediction p = predictions[i];
     std::cout << std::fixed << std::setprecision(4) << p.second << " - \""
               << p.first << "\"" << std::endl;
   }
+
   return NULL;
 }
 
@@ -285,17 +315,41 @@ int main(int arc, char** argv) {
 
   // Classify some images
   string img_dir = "test_images";
+
+  // Directory with only one image in it
+  // string img_dir = "single_img_test";
+
   std::vector<string> fnames = getImageFiles(img_dir);   
 
   int start_s = clock();
   std::vector<pthread_t> classifierThreads;
   for (string fname : fnames) {
-    struct ClassifyImgArgs args;
-    args.classifier = &classifier;
-    args.fname = fname;
+    std::cout << "fname in loop: " 
+              << fname
+              << std::endl;
 
+    // Create argument struct
+    ClassifyImgArgs* args = new ClassifyImgArgs();
+
+    // TODO: Switch to fname once this works
+    // args->fname = std::string("single_img_test/samoyed2.jpg");
+
+    args->fname = fname;
+    args->model_file = argv[1];
+    args->trained_file = argv[2];
+    args->mean_file = argv[3];
+    args->label_file = argv[4];
+    
+    std::cout << "Creating thread"
+              << std::endl;
+
+    // Create thread and pass it arg struct pointer
     pthread_t thr;
-    pthread_create(&thr, NULL, &classifyImgFile, (void *)&args);
+    pthread_create(&thr, NULL, &classifyImgFile, (void *)args);
+
+    std::cout << "Created thread"
+              << std::endl;
+
     classifierThreads.push_back(thr);
   }
   for (pthread_t thr : classifierThreads) {
